@@ -1,0 +1,608 @@
+﻿@page "/revenue"
+@using VMP.Dashboard.Models
+@using System.Data;
+@using System.Collections.Generic;
+@using System.Dynamic;
+@using Syncfusion.Blazor.PivotView
+
+@code {
+    public static String[] ThemeColorList = new String[] { "#816aae", "#d682b6", "#f9956b", "#fec578", "#5e8ac7", "#5ea5c7", "#50c5dd", "#5dc4b1", "#ececec" };
+    public String[] RevenueOverTimepalettes = new String[] { ThemeColorList[8], ThemeColorList[1] };
+
+    SqlDataAccess sda = new SqlDataAccess();
+
+    private List<RevenueOverTimeGrid> revenueOverTimesModel;
+    private List<CategoryDb> catSubCatDb;
+    private List<RegionDb> regions;
+    private List<SegmentDb> segments;
+    private List<totalsales> TotalsalesDb;
+    private List<productListed> ProductListedb;
+    private List<CategorySale> CategorySalesdb;
+    private List<CategorySaleBar> CategorySaleBarsdb;
+    private List<BrandsBar> BrandsBarsdb;
+    private List<RegionBar> RegionBarsdb;
+
+    private List<OrderPivot> OrderPivotDb;
+
+    protected override void OnInitialized()
+    {
+        catSubCatDb = sda.GetCategoryDbs();
+        regions = sda.GetRegions();
+        segments = sda.GetSegment();
+
+        sda.SetDate(StartDate, EndDate);
+
+        IntializeData();
+    }
+
+    public void getValues()
+    {
+        // var value = multiselectValue;
+        IntializeData();
+    }
+
+    public DateTime? StartDate { get; set; } = new DateTime(2020, 01, 01);
+    public DateTime? EndDate { get; set; } = new DateTime(2020, 12, 31);
+    public DateTime? PrevStartDate { get; set; } = new DateTime(2019, 01, 01);
+    public DateTime? PrevEndDate { get; set; } = new DateTime(2019, 12, 31);
+    public DateTime MinDate { get; set; } = new DateTime(2019, 01, 01);
+    public DateTime MaxDate { get; set; } = new DateTime(2020, 12, 31);
+    public DateTime lastMonthStart { get; set; } = new DateTime(2020, 11, 01);
+    public DateTime lastMonthEnd { get; set; } = new DateTime(2020, 11, 30);
+    public DateTime last3MonthStart { get; set; } = new DateTime(2020, 10, 01);
+    public DateTime last3MonthEnd { get; set; } = new DateTime(2020, 12, 31);
+    public DateTime ytdStart { get; set; } = new DateTime(2020, 01, 01);
+    public DateTime ytdEnd { get; set; } = new DateTime(2020, 12, 31);
+    public DateTime oneyearStart { get; set; } = new DateTime(2020, 01, 01);
+    public DateTime oneyearEnd { get; set; } = new DateTime(2020, 12, 31);
+    public DateTime twoyearsStart { get; set; } = new DateTime(2019, 01, 01);
+    public DateTime twoyearsEnd { get; set; } = new DateTime(2020, 12, 31);
+    public string[] multiselectValue { get; set; }
+    public string[] regionvalues { get; set; }
+    public string[] segemntvalues { get; set; }
+    private List<string> Cols = new List<string>();
+    private List<ExpandoObject> Transposed { get; set; } = new List<ExpandoObject>();
+    DataTable dtFlat;
+//    public string selectedGroupby {​ get; set; }​ = "Month";
+
+
+    public void OnDateRangeChange(RangePickerEventArgs<DateTime?> args)
+    {
+        sda.SetDate(args.StartDate, args.EndDate);
+        //StateHasChanged();
+        //IntializeData();
+
+    }
+
+    private void IntializeData()
+    {
+        sda.FilterCreation(multiselectValue, regionvalues, segemntvalues,selectedGroupby);
+
+        revenueOverTimesModel = sda.GetRevenueOverTimesGrid();
+
+        TotalsalesDb = sda.GetTotalsales();
+
+        ProductListedb = sda.GetProductListedb();
+
+        CategorySalesdb = sda.GetCategorySales();
+
+        CategorySaleBarsdb = sda.GetCategorySaleBars();
+
+        BrandsBarsdb = sda.GetBrandsBars();
+
+        RegionBarsdb = sda.GetRegionBars();
+
+        OrderPivotDb = sda.GetOrderPivots();
+
+        dtFlat = SqlDataAccess.ToDataTable(revenueOverTimesModel);
+        dtFlat = GenerateTransposedTable(dtFlat);
+        Cols = new List<string>();
+        foreach (DataColumn col in dtFlat.Columns)
+        {
+            Cols.Add(col.ColumnName);
+        }
+        GenerateListFromTable(dtFlat);
+        //dtFlat = GenerateTransposedTable(revenueOverTimesModel);
+        //Donut Db Chart
+
+    }
+
+    public bool ShowSelectAllCheckBox { get; set; } = true;
+    public bool EnableSelectionOrders { get; set; } = false;
+    public bool EnableCheckBox { get; set; } = true;
+
+    private DataTable GenerateTransposedTable(DataTable inputTable)
+    {
+        DataTable outputTable = new DataTable();
+        outputTable.Columns.Add(inputTable.Columns[0].ColumnName.ToString());
+        foreach (DataRow inRow in inputTable.Rows)
+        {
+            string newColName = DateTime.Parse(inRow[0].ToString()).ToString("MMM-yy-dd");
+            outputTable.Columns.Add(newColName);
+        }
+        for (int rCount = 1; rCount <= inputTable.Columns.Count - 1; rCount++)
+        {
+            DataRow newRow = outputTable.NewRow();
+            if (inputTable.Columns[rCount].ColumnName.ToString() == "PreviousSeriesValue")
+            {
+                newRow[0] = "Previous";
+            }
+            else if (inputTable.Columns[rCount].ColumnName.ToString() == "CurrentSeriesValue")
+            {
+                newRow[0] = "Current";
+            }
+            else if (inputTable.Columns[rCount].ColumnName.ToString() == "Growth")
+            {
+                newRow[0] = "Growth %";
+            }
+            else if (inputTable.Columns[rCount].ColumnName.ToString() == "GrowthAbs")
+            {
+                newRow[0] = "Abs Growth";
+            }
+
+            if (inputTable.Columns[rCount].ColumnName.ToString() != "Error")
+            {
+                for (int cCount = 0; cCount <= inputTable.Rows.Count - 1; cCount++)
+                {
+                    string colValue = inputTable.Rows[cCount][rCount].ToString();
+                    if (newRow[0].ToString() == "Growth %")
+                    {
+                        newRow[cCount + 1] = colValue + "%";
+                    }
+                    else
+                    {
+                        newRow[cCount + 1] = Math.Round(Convert.ToDouble(colValue), 0).ToString("$#,##0");
+                    }
+                }
+                outputTable.Rows.Add(newRow);
+            }
+        }
+        return outputTable;
+    }
+
+    //convert datatable to list
+
+    public void GenerateListFromTable(DataTable input)
+    {
+        //Transposed = null;
+        Transposed = new List<ExpandoObject>();
+        foreach (DataRow row in input.Rows)
+        {
+            System.Dynamic.ExpandoObject e = new System.Dynamic.ExpandoObject();
+            foreach (DataColumn col in input.Columns)
+                e.TryAdd(col.ColumnName, row.ItemArray[col.Ordinal]);
+            Transposed.Add(e);
+        }
+    }
+
+    List<PivtoDrop> PivotDropDown =
+    new List<PivtoDrop>() {
+            new PivtoDrop { Name = "Products", Value = "Products" },
+            new PivtoDrop { Name = "Category > Brands > Products", Value = "Category" },
+            new PivtoDrop { Name = "Brands > Products", Value = "Brands" }
+    };
+    public class PivtoDrop
+    {
+        public string Name { get; set; }
+        public string Value { get; set; }
+    }
+
+    SfPivotView<OrderPivot> Pivot;
+
+    public string selectedvalue = "Products";
+
+    private void updatePivot()
+    {
+        //Pivot.LayoutRefreshAsync();
+        StateHasChanged();
+    }
+    public class viewby
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+    }
+    public List<viewby> viewbydata = new List<viewby>
+{
+        new viewby{Id=1,Name="Year"},
+        new viewby{Id=2,Name="Quarter"},
+        new viewby{Id=3,Name="Month"},
+        new viewby{Id=4,Name="Week"},
+        new viewby{Id=5,Name="Day"}
+    };
+    public string selectedGroupby = "Month";
+
+ }
+
+<div class="row">
+    <div id="content" class="col-md-12">
+        <!-- PAGE HEADER-->
+        <div class="row">
+            <div class="col-xs-12">
+                <div class="page-header">
+                    <!-- STYLER -->
+                    <!-- /STYLER -->
+                    <!-- BREADCRUMBS -->
+                    @*<ul class="breadcrumb">
+            <li>
+                <i class="fa fa-home"></i>
+                <a href="index.html">Home</a>
+            </li>
+            <li>Overview</li>
+        </ul>*@
+                    <!-- /BREADCRUMBS -->
+                    <div class="clearfix">
+                    </div>
+                    <div class="row" style="padding-bottom: 10px;border-top: 1px solid #ececec;padding-top: 10px;">
+                        <div class="col-sm-2 filter-header">
+                            <h5>Category/SubCategory:</h5>
+                            <SfMultiSelect TValue="string[]" AllowFiltering="true" TItem="CategoryDb" Mode="@VisualMode.CheckBox" Placeholder="Select a Category" DataSource="@catSubCatDb" ShowSelectAll="@ShowSelectAllCheckBox"
+                                           EnableSelectionOrder="@EnableSelectionOrders" FilterBarPlaceholder="Search Category" EnableGroupCheckBox="@EnableCheckBox" PopupHeight="350px" ShowDropDownIcon="true" @bind-Value="multiselectValue">
+                                <MultiSelectFieldSettings GroupBy="Category" Value="SubCategory"></MultiSelectFieldSettings>
+                                @*<MultiSelectEvents TValue="string[]" TItem="CategoryDb" OnClose="getValues"></MultiSelectEvents>*@
+                            </SfMultiSelect>
+                        </div>
+                        <div class="col-sm-2 filter-header">
+                            <h5>Region/State:</h5>
+                            <SfMultiSelect TValue="string[]" TItem="RegionDb" AllowFiltering="true" Placeholder="Select a Region" Mode="@VisualMode.CheckBox" DataSource="@regions" ShowSelectAll="@ShowSelectAllCheckBox" EnableSelectionOrder="@EnableSelectionOrders" ShowDropDownIcon="true" FilterBarPlaceholder="Search Region" PopupHeight="350px" @bind-Value="regionvalues">
+                                <MultiSelectFieldSettings Text="Name" Value="Name"></MultiSelectFieldSettings>
+                                @*<MultiSelectEvents TValue="string[]" TItem="RegionDb" OnClose="getValues"></MultiSelectEvents>*@
+                            </SfMultiSelect>
+                        </div>
+                        <div class="col-sm-2 filter-header">
+                            <h5>Customer Segment:</h5>
+                            <SfMultiSelect TValue="string[]" TItem="SegmentDb" AllowFiltering="true" Placeholder="Select Customer Segment" Mode="@VisualMode.CheckBox" DataSource="@segments" ShowSelectAll="@ShowSelectAllCheckBox" EnableSelectionOrder="@EnableSelectionOrders" ShowDropDownIcon="true" FilterBarPlaceholder="Search Customer Segment" PopupHeight="350px" @bind-Value="segemntvalues">
+                                <MultiSelectFieldSettings Text="Name" Value="Name"></MultiSelectFieldSettings>
+                                @*<MultiSelectEvents TValue="string[]" TItem="SegmentDb" OnClose="getValues"></MultiSelectEvents>*@
+                            </SfMultiSelect>
+                        </div>
+                        <div class="col-sm-3 filter-header">
+                            <h5>Time Period:</h5>
+                            <SfDateRangePicker Min="@MinDate" Max="@MaxDate" Placeholder="Select a Time Period" @bind-StartDate="@StartDate" @bind-EndDate="@EndDate">
+                                <DateRangePickerEvents TValue="DateTime?" ValueChange="@OnDateRangeChange"></DateRangePickerEvents>
+                                <DateRangePickerPresets>
+                                    <DateRangePickerPreset Label="Last Month" Start="@lastMonthStart" End="@lastMonthEnd"></DateRangePickerPreset>
+                                    <DateRangePickerPreset Label="Last 3 Months" Start="@last3MonthStart" End="@last3MonthEnd"></DateRangePickerPreset>
+                                    <DateRangePickerPreset Label="Year To Date" Start="@ytdStart" End="@ytdEnd"></DateRangePickerPreset>
+                                    <DateRangePickerPreset Label="1 Year" Start="@oneyearStart" End="@oneyearEnd"></DateRangePickerPreset>
+                                    <DateRangePickerPreset Label="2 Years" Start="@twoyearsStart" End="@twoyearsEnd"></DateRangePickerPreset>
+                                </DateRangePickerPresets>
+                            </SfDateRangePicker>
+                        </div>
+                        <div class="col-sm-2 filter-header">
+                            <h5>Group By:</h5>
+                            <SfDropDownList TValue="string" TItem="viewby" AllowFiltering="true" Placeholder="Select Group By" DataSource="@viewbydata" PopupHeight="350px" @bind-Value="selectedGroupby">
+                                <DropDownListFieldSettings Text="Name" Value="Name"></DropDownListFieldSettings>
+                            </SfDropDownList>
+                        </div>
+                        <div class="col-sm-1 filter-header" style="margin-top: 23px;">
+                            <h5></h5>
+                            <SfProgressButton Content="Apply" IsPrimary="true" OnClick="getValues"></SfProgressButton>
+                            @*<button class="btn btn-primary" style="margin-top:22px;" @onclick="getValues">Apply</button>*@
+                        </div>
+                    </div>
+               
+                    @*<div class="description"></div>*@
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- COLUMN 1 -->
+            <div class="col-md-12">
+                <!-- BOX -->
+                <div class="box border">
+                    <div class="box-title-white">
+                        @if (revenueOverTimesModel == null)
+                        {
+                            <span><h5>No Data Available</h5></span>
+                        }
+                        else
+                        {
+                            <span>
+                                <h5>Revenue Over: Time</h5>
+                            </span>
+                        }
+                    </div>
+                    <div class="box-body">
+                        @*<div id="chart_lines" class="chart" style="height: 218px;"></div>*@
+                        <SfChart Height="218px" Palettes="@RevenueOverTimepalettes" UseGroupingSeparator="true">
+                            <ChartArea><ChartAreaBorder Width="0"></ChartAreaBorder></ChartArea>
+                            <ChartPrimaryXAxis ValueType="Syncfusion.Blazor.Charts.ValueType.DateTimeCategory" IntervalType="IntervalType.Months" LabelFormat="MMM-yy" LabelIntersectAction="Syncfusion.Blazor.Charts.LabelIntersectAction.Hide">
+                                @*<ChartPrimaryXAxis ValueType="Syncfusion.Blazor.Charts.ValueType.DateTime" Interval="1">*@
+                                <ChartAxisMajorGridLines Width="0"></ChartAxisMajorGridLines>
+                            </ChartPrimaryXAxis>
+                            <ChartPrimaryYAxis LabelFormat="$#,##0">
+                                <ChartAxisLineStyle Width="0"></ChartAxisLineStyle>
+
+                                <ChartAxisMajorGridLines Width="0.5"></ChartAxisMajorGridLines>
+                                <ChartAxisMajorTickLines Width="0"></ChartAxisMajorTickLines>
+                            </ChartPrimaryYAxis>
+                            <ChartTooltipSettings Enable="true" Format="${point.x} : ${point.y}</b>"></ChartTooltipSettings>
+                            <ChartSeriesCollection>
+                                <ChartSeries DataSource="@revenueOverTimesModel" XName="Month" YName="PreviousSeriesValue"
+                                             Name="Previous" Type="Syncfusion.Blazor.Charts.ChartSeriesType.Area">
+
+                                </ChartSeries>
+                                <ChartSeries DataSource="@revenueOverTimesModel" XName="Month" YName="CurrentSeriesValue"
+                                             Name="Current" Type="Syncfusion.Blazor.Charts.ChartSeriesType.Column" ColumnSpacing="0.1" ColumnWidth="0.6" Opacity="0.7">
+
+                                </ChartSeries>
+                            </ChartSeriesCollection>
+
+                            <ChartLegendSettings Visible="true" Position="Syncfusion.Blazor.Charts.LegendPosition.Bottom">
+                            </ChartLegendSettings>
+                        </SfChart>
+                    </div>
+                </div>
+                <!-- /BOX -->
+            </div>
+
+        </div>
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="box border">
+                    <div class="box-title-white">
+                        @if (Transposed == null || Transposed.Count == 0)
+                        {
+                            <span><h5 class="data-warning">No Data Available</h5></span>
+                        }
+                        else
+                        {
+                            <span>
+                                <h5>Revenue Over Time</h5>
+                            </span>
+                        }
+                    </div>
+                    <div class="box-body">
+                        @*<div id="bar_chart" class="chart" style="height: 220px;"></div>*@
+                        <SfGrid DataSource="@Transposed" Width="1299px">
+                            <GridColumns>
+                                @foreach (var col in Cols)
+                                {
+                                    <GridColumn Field="@col" HeaderText="@col">
+                                        @*<Template>
+                                            @{
+                                                dynamic data = (context as ExpandoObject);
+                                                <span>@(((IDictionary<String, Object>)data)[col])</span>
+                                            }
+                                        </Template>*@
+                                    </GridColumn>
+                                }
+                            </GridColumns>
+                        </SfGrid>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="col-md-4">
+                    <div class="box border">
+                        <div class="box-title-white">
+                            @if (CategorySaleBarsdb == null || CategorySaleBarsdb.Count == 0)
+                            {
+                                <span><h5 class="data-warning">No Data Available</h5></span>
+                            }
+                            else
+                            {
+                                <span>
+                                    <h5>Top Category Share</h5>
+                                </span>
+                            }
+                        </div>
+                        <div class="box-body">
+                            @*<div id="bar_chart" class="chart" style="height: 220px;"></div>*@
+                            <SfChart Height="220px">
+                                <ChartArea><ChartAreaBorder Width="0"></ChartAreaBorder></ChartArea>
+                                <ChartPrimaryXAxis ValueType="Syncfusion.Blazor.Charts.ValueType.Category">
+
+                                    <ChartAxisMajorGridLines Width="0"></ChartAxisMajorGridLines>
+                                </ChartPrimaryXAxis>
+                                <ChartPrimaryYAxis Visible="false" LabelFormat="p2">
+                                    <ChartAxisLineStyle Width="0"></ChartAxisLineStyle>
+
+                                    <ChartAxisMajorGridLines Width="0.5"></ChartAxisMajorGridLines>
+                                    <ChartAxisMajorTickLines Width="0"></ChartAxisMajorTickLines>
+                                </ChartPrimaryYAxis>
+                                <ChartTooltipSettings Enable="true" Format="${point.x} : <br />${point.y}"></ChartTooltipSettings>
+                                <ChartSeriesCollection>
+                                    <ChartSeries DataSource="@CategorySaleBarsdb" XName="Category" YName="Sales"
+                                                 Type="Syncfusion.Blazor.Charts.ChartSeriesType.Bar" Fill="@ThemeColorList[1]">
+
+                                    </ChartSeries>
+                                </ChartSeriesCollection>
+                            </SfChart>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="box border">
+                        <div class="box-title-white">
+                            @if (BrandsBarsdb == null || BrandsBarsdb.Count == 0)
+                            {
+                                <span><h5 class="data-warning">No Data Available</h5></span>
+                            }
+                            else
+                            {
+                                <span>
+                                    <h5>Top Brands Share</h5>
+                                </span>
+                            }
+                        </div>
+                        <div class="box-body">
+                            @*<div id="bar_chart" class="chart" style="height: 220px;"></div>*@
+                            <SfChart Height="220px">
+                                <ChartArea><ChartAreaBorder Width="0"></ChartAreaBorder></ChartArea>
+                                <ChartPrimaryXAxis ValueType="Syncfusion.Blazor.Charts.ValueType.Category">
+
+                                    <ChartAxisMajorGridLines Width="0"></ChartAxisMajorGridLines>
+                                </ChartPrimaryXAxis>
+                                <ChartPrimaryYAxis Visible="false" LabelFormat="p2">
+                                    <ChartAxisLineStyle Width="0"></ChartAxisLineStyle>
+
+                                    <ChartAxisMajorGridLines Width="0.5"></ChartAxisMajorGridLines>
+                                    <ChartAxisMajorTickLines Width="0"></ChartAxisMajorTickLines>
+                                </ChartPrimaryYAxis>
+                                <ChartTooltipSettings Enable="true" Format="${point.x} : <br />${point.y}"></ChartTooltipSettings>
+                                <ChartSeriesCollection>
+                                    <ChartSeries DataSource="@BrandsBarsdb" XName="Brands" YName="Sales"
+                                                 Type="Syncfusion.Blazor.Charts.ChartSeriesType.Bar" Fill="@ThemeColorList[2]">
+
+                                    </ChartSeries>
+                                </ChartSeriesCollection>
+                            </SfChart>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="box border">
+                        <div class="box-title-white">
+                            @if (RegionBarsdb == null || RegionBarsdb.Count == 0)
+                            {
+                                <span><h5 class="data-warning">No Data Available</h5></span>
+                            }
+                            else
+                            {
+                                <span>
+                                    <h5>Top Region Share</h5>
+                                </span>
+                            }
+                        </div>
+                        <div class="box-body">
+                            @*<div id="bar_chart" class="chart" style="height: 220px;"></div>*@
+                            <SfChart Height="220px">
+                                <ChartArea><ChartAreaBorder Width="0"></ChartAreaBorder></ChartArea>
+                                <ChartPrimaryXAxis ValueType="Syncfusion.Blazor.Charts.ValueType.Category">
+
+                                    <ChartAxisMajorGridLines Width="0"></ChartAxisMajorGridLines>
+                                </ChartPrimaryXAxis>
+                                <ChartPrimaryYAxis Visible="false" LabelFormat="p2">
+                                    <ChartAxisLineStyle Width="0"></ChartAxisLineStyle>
+
+                                    <ChartAxisMajorGridLines Width="0.5"></ChartAxisMajorGridLines>
+                                    <ChartAxisMajorTickLines Width="0"></ChartAxisMajorTickLines>
+                                </ChartPrimaryYAxis>
+                                <ChartTooltipSettings Enable="true" Format="${point.x} : <br />${point.y}"></ChartTooltipSettings>
+                                <ChartSeriesCollection>
+                                    <ChartSeries DataSource="@RegionBarsdb" XName="Region" YName="Sales"
+                                                 Type="Syncfusion.Blazor.Charts.ChartSeriesType.Bar" Fill="@ThemeColorList[3]">
+
+                                    </ChartSeries>
+                                </ChartSeriesCollection>
+                            </SfChart>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12">
+                <div class="box border">
+                    <div class="box-title-white">
+                        <span>
+                            <h5>Top Product Sales</h5>
+                        </span>
+
+                    </div>
+                    
+                    <div class="box-body">
+                        <div class="row">
+                            <div style="float: right; margin-right: 15px; padding-bottom: 10px;">
+                                <SfDropDownList TValue="string" TItem="PivtoDrop" AllowFiltering="true" DataSource="@PivotDropDown" PopupHeight="350px" Width="200px" @bind-Value="selectedvalue">
+                                    <DropDownListFieldSettings Text="Name" Value="Value"></DropDownListFieldSettings>
+                                </SfDropDownList>
+                            </div>
+                        </div>
+                       
+                       
+                        @if (selectedvalue == "Products")
+                        {
+                            <SfPivotView @ref="Pivot" TValue="OrderPivot" Height="300px">
+                                <PivotViewDataSourceSettings DataSource="@OrderPivotDb">
+                                    <PivotViewColumns>
+                                        <PivotViewColumn Name="orderdate" Caption="Month"></PivotViewColumn>
+                                    </PivotViewColumns>
+                                    <PivotViewRows>
+
+                                            <PivotViewRow Name="Products"></PivotViewRow>
+                                        
+
+                                    </PivotViewRows>
+                                    <PivotViewValues>
+                                        <PivotViewValue Name="sales" Caption="Total Sale" Type="SummaryTypes.Sum"></PivotViewValue>
+                                    </PivotViewValues>
+                                    <PivotViewFormatSettings>
+                                        <PivotViewFormatSetting Name="sales" Format="C"></PivotViewFormatSetting>
+                                        <PivotViewFormatSetting Name="orderdate" Type="FormatType.DateTime" Format="MMM-yy"></PivotViewFormatSetting>
+                                    </PivotViewFormatSettings>
+                                </PivotViewDataSourceSettings>
+                            </SfPivotView>
+                        }
+                        else if (selectedvalue == "Brands")
+                        {
+                            <SfPivotView @ref="Pivot" TValue="OrderPivot" Height="300px">
+                                <PivotViewDataSourceSettings DataSource="@OrderPivotDb">
+                                    <PivotViewColumns>
+                                        <PivotViewColumn Name="orderdate" Caption="Month"></PivotViewColumn>
+                                    </PivotViewColumns>
+                                    <PivotViewRows>
+                                       
+                                            <PivotViewRow Name="Brands"></PivotViewRow>
+                                            <PivotViewRow Name="Products"></PivotViewRow>
+                                        
+                                    </PivotViewRows>
+                                    <PivotViewValues>
+                                        <PivotViewValue Name="sales" Caption="Total Sale" Type="SummaryTypes.Sum"></PivotViewValue>
+                                    </PivotViewValues>
+                                    <PivotViewFormatSettings>
+                                        <PivotViewFormatSetting Name="sales" Format="C"></PivotViewFormatSetting>
+                                        <PivotViewFormatSetting Name="orderdate" Type="FormatType.DateTime" Format="MMM-yy"></PivotViewFormatSetting>
+                                    </PivotViewFormatSettings>
+                                </PivotViewDataSourceSettings>
+                            </SfPivotView>
+                        }
+                        else
+                        {
+                            <SfPivotView @ref="Pivot" TValue="OrderPivot" Height="300px">
+                                <PivotViewDataSourceSettings DataSource="@OrderPivotDb">
+                                    <PivotViewColumns>
+                                        <PivotViewColumn Name="orderdate" Caption="Month"></PivotViewColumn>
+                                    </PivotViewColumns>
+                                    <PivotViewRows>
+                           
+                                            <PivotViewRow Name="Category"></PivotViewRow>
+                                            <PivotViewRow Name="Brands"></PivotViewRow>
+                                            <PivotViewRow Name="Products"></PivotViewRow>
+                                   
+                                    </PivotViewRows>
+                                    <PivotViewValues>
+                                        <PivotViewValue Name="sales" Caption="Total Sale" Type="SummaryTypes.Sum"></PivotViewValue>
+                                    </PivotViewValues>
+                                    <PivotViewFormatSettings>
+                                        <PivotViewFormatSetting Name="sales" Format="C"></PivotViewFormatSetting>
+                                        <PivotViewFormatSetting Name="orderdate" Type="FormatType.DateTime" Format="MMM-yy"></PivotViewFormatSetting>
+                                    </PivotViewFormatSettings>
+                                </PivotViewDataSourceSettings>
+                            </SfPivotView>
+                        }
+
+                        @*<div id="bar_chart" class="chart" style="height: 220px;"></div>*@
+
+                    </div>
+                </div>
+
+            </div>
+            @*<div class="col-md-3">
+                <SfDropDownList TValue="string" TItem="PivtoDrop" AllowFiltering="true"  DataSource="@PivotDropDown" PopupHeight="350px" @bind-Value="selectedvalue">
+                    <DropDownListFieldSettings Text="Name" Value="Value"></DropDownListFieldSettings>
+                </SfDropDownList>
+            </div>*@
+        </div>
+
+
+    </div>
+</div>

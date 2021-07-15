@@ -1,0 +1,8 @@
+{
+  "runtimeOptions": {
+    "additionalProbingPaths": [
+      "C:\\Users\\Infinifox.User6\\.dotnet\\store\\|arch|\\|tfm|",
+      "C:\\Users\\Infinifox.User6\\.nuget\\packages"
+    ]
+  }
+}
